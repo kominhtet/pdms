@@ -245,7 +245,7 @@ export default function ModernImageSlider() {
                   textShadow: "0 0 20px rgba(65, 196, 243, 0.5)",
                 }}
               >
-                Profile Data Management System CK
+                Profile Data Management System
               </Typography>
               <Typography
                 variant="h6"

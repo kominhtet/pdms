@@ -12,7 +12,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0 # IMPORTANT: needed for git diff between commits
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -21,15 +21,23 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      # Optional: skip if no frontend files changed (adjust paths!)
       - name: Detect changes
         id: changes
+        shell: bash
         run: |
-          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | \
-            grep -E '^(src/|public/|package\.json|package-lock\.json|vite\.config\.|webpack\.|craco\.|\.env)'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          # If BEFORE is empty (rare) or not found, build anyway
+          if [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --name-only "$BEFORE" "$AFTER" | grep -E '^(src/|public/|package\.json|package-lock\.json|vite\.config\.|webpack\.|craco\.|\.env)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Install dependencies (fast)
@@ -44,6 +52,7 @@ jobs:
 
       - name: Deploy (rsync incremental)
         if: steps.changes.outputs.changed == 'true'
+        shell: bash
         run: |
           sudo mkdir -p /var/www/html/PDMS/build
           rsync -a --delete build/ /var/www/html/PDMS/build/

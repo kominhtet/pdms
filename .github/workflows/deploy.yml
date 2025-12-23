@@ -2,8 +2,7 @@ name: Deploy PDMS to Self-Hosted Server
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
   build-and-deploy:
@@ -12,20 +11,39 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "npm"
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      - name: Clean install dependencies
-        run: npm install
+      # Optional: skip if no frontend files changed (adjust paths!)
+      - name: Detect changes
+        id: changes
+        run: |
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | \
+            grep -E '^(src/|public/|package\.json|package-lock\.json|vite\.config\.|webpack\.|craco\.|\.env)'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install dependencies (fast)
+        if: steps.changes.outputs.changed == 'true'
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Build React app
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          CI: "false"
         run: npm run build
 
-      - name: Deploy to Nginx directory
+      - name: Deploy (rsync incremental)
+        if: steps.changes.outputs.changed == 'true'
         run: |
-          rm -rf /var/www/html/PDMS/build
-          cp -r build /var/www/html/PDMS/
+          sudo mkdir -p /var/www/html/PDMS/build
+          rsync -a --delete build/ /var/www/html/PDMS/build/
